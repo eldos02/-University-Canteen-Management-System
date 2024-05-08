@@ -189,3 +189,43 @@ func DeleteDish(requests *gin.Context) {
 	//Успех!
 	requests.JSON(http.StatusOK, gin.H{"message": "Dish deleted successfully"})
 }
+
+// Для админа, общая статистика такие как средний чек, общая сумма чеков
+func ReportPage() ([]models.Order, float64, float64, error) {
+	var orders []models.Order
+	var totalSum float64
+	var averageCheck float64
+
+	//Ищем все все заказы в базе данных
+	if err := database.Find(&orders).Error; err != nil {
+		return nil, 0, 0, err
+	}
+
+	//высчитоваем общую сумму заказов
+	for _, order := range orders {
+		totalSum += order.TotalSum
+	}
+
+	//если заказ существует тогда сделаем рассчет среднего чека
+	if len(orders) > 0 {
+		averageCheck = totalSum / float64(len(orders))
+	}
+
+	return orders, totalSum, averageCheck, nil
+}
+
+// Для репорт страницы
+func OrdersHandler(requests *gin.Context) {
+	orders, totalSum, avgCheck, err := ReportPage()
+	if err != nil {
+		requests.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при получении заказов"})
+		return
+	}
+
+	// Передаем заказы, общую сумму и средний чек в шаблон
+	requests.HTML(http.StatusOK, "analystics.html", gin.H{
+		"Orders":   orders,
+		"TotalSum": totalSum,
+		"AvgCheck": avgCheck,
+	})
+}

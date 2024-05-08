@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Заказы</title>
+</head>
+<body>
+<h1>Список заказов</h1>
+<button onclick="window.location.href='/';">Dashboard</button>
+
+{{ range .Orders }}
+<h2>Заказ #{{ .ID }}</h2>
+<p>Пользователь (ID): {{ .UserID }}</p>
+<p>Общая сумма: {{ .TotalSum }}</p>
+{{ end }}
+
+<hr>
+<h3>Общая статистика:</h3>
+<p>Общая сумма всех заказов: {{ .TotalSum }}</p>
+<p>Средний чек: {{ .AvgCheck }}</p>
+</body>
+</html>

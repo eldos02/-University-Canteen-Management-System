@@ -59,6 +59,9 @@ func main() {
 	// Проверка административных прав и панель управление блюд
 	gateway.GET("/adminPage", auth.AdminAuth)
 
+	//Статистика по заказам
+	gateway.GET("/analytics", db.OrdersHandler)
+
 	// Дашборд
 	gateway.GET("/", auth.DashboardAuth)
 
