@@ -7,6 +7,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
+	"strconv"
 )
 
 // Создаем нового пользователя
@@ -69,4 +70,122 @@ func GetUserByID(id uint) (*models.User, error) {
 	}
 	// Возвращаем найденного пользователя и nil, если пользователь найден успешно
 	return &user, nil
+}
+
+// Для создание новго заказа
+func CreateOrder(requests *gin.Context) {
+	//Получаем данные о сессий, нам нужно знать кто делает заказ
+	session := sessions.Default(requests)
+	userID := session.Get("user_id")
+
+	//Вдруг не аутифицирован
+	if userID == nil {
+		requests.JSON(http.StatusUnauthorized, gin.H{"error": "Ты забыл зайти, дружок"})
+		return
+	}
+
+	//Временный Struct для создание шаблона заказа
+	var req models.OrderRequest
+	if err := requests.ShouldBindJSON(&req); err != nil {
+		requests.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	//Считоваем общую цену в корзине
+	var totalSum float64
+	for _, item := range req.CartItems {
+		var dish models.Dish
+		if result := database.First(&dish, item.DishID); result.Error != nil {
+			requests.JSON(http.StatusBadRequest, gin.H{"error": "Dish not found"})
+			return
+		}
+		totalSum += float64(item.Quantity) * dish.Price
+	}
+
+	//Создаем новый заказ в базе данных
+	newOrder := models.Order{UserID: userID.(uint), TotalSum: totalSum}
+	if result := database.Create(&newOrder); result.Error != nil {
+		requests.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+
+	//Создаем OrderItem где указываем АЙДИ заказа и блюдо, количество
+	for _, item := range req.CartItems {
+		newOrderItem := models.OrderItem{OrderID: newOrder.ID, DishID: item.DishID, Quantity: item.Quantity}
+		database.Create(&newOrderItem)
+	}
+	requests.JSON(http.StatusOK, gin.H{"message": "Харош, ты сделал заказ!", "order_id": newOrder.ID})
+}
+
+// Для создание нового блюда
+func CreateDish(requests *gin.Context) {
+	var dish models.Dish
+
+	//Проверяем валидность данных с фронта
+	if err := requests.ShouldBindJSON(&dish); err != nil {
+		requests.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	//Создаем новое блюдо на базе данных и обработаем ошибку если будет
+	if err := database.Create(&dish).Error; err != nil {
+		requests.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	//Успех!
+	requests.JSON(http.StatusCreated, dish)
+}
+
+// Возвращает весь список блюд в JSON формате
+func GetDishes(requests *gin.Context) {
+	var dishes []models.Dish
+
+	//Ищем все блюда в базе данных и при форс мажоре узнаем из за чего ошибка
+	if result := database.Find(&dishes); result.Error != nil {
+		requests.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+
+	//Красавчик!
+	requests.JSON(http.StatusOK, dishes)
+}
+
+// Обновление/редактирование существующего блюдо
+func UpdateDish(requests *gin.Context) {
+	//Получаем Айди блюдо
+	id, err := strconv.Atoi(requests.Param("id"))
+	if err != nil {
+		requests.JSON(http.StatusBadRequest, gin.H{"error": "Неверный Айди блюдо дружок"})
+		return
+	}
+
+	var dish models.Dish
+	//Для откладки
+	if err := database.First(&dish, id).Error; err != nil {
+		requests.JSON(http.StatusNotFound, gin.H{"error": "Dish not found"})
+		return
+	}
+
+	if err := requests.ShouldBindJSON(&dish); err != nil {
+		requests.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	//Сохроняем изменение в базе данных
+	database.Save(&dish)
+	requests.JSON(http.StatusOK, dish)
+}
+
+// Для удаление блюдо из база данных
+func DeleteDish(requests *gin.Context) {
+	//получаем айди блюдо и удалаем блюдо
+	dishID := requests.Param("id")
+	if result := database.Delete(&models.Dish{}, dishID); result.Error != nil {
+		requests.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+
+	//Успех!
+	requests.JSON(http.StatusOK, gin.H{"message": "Dish deleted successfully"})
 }
